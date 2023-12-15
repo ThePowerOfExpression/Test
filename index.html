@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Snippet</title>
+    <style>
+        pre {
+            overflow-x: auto;
+            white-space: pre-wrap;
+            white-space: -moz-pre-wrap;
+            white-space: -pre-wrap;
+            white-space: -o-pre-wrap;
+            word-wrap: break-word;
+        }
+        button {
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <button onclick="copyToClipboard()">Copy Code</button>
+    <pre id="codeBlock">
+// Optimized Mask Effector Expression with Bezier Curve Support and Adjustable numDivisions
+const numDivisions = 5; // Adjust this number for more or less precision
+... [more code] ...
+effectValue;
+    </pre>
+
+    <script>
+        function copyToClipboard() {
+            const code = `// Optimized Mask Effector Expression with Bezier Curve Support and Adjustable numDivisions
+const numDivisions = 5; // Adjust this number for more or less precision
+
+// Specify the mask layer and mask name here
+const maskLayer = thisComp.layer("MASK"); // Replace "MASK" with the name of your layer
+const maskName = "Mask 1"; // Change this to the name of your mask
+... [include the entire code snippet here] ...
+effectValue;`;
+
+            const textarea = document.createElement('textarea');
+            textarea.value = code;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+
+            alert('Code copied to clipboard!');
+        }
+    </script>
+</body>
+</html>
