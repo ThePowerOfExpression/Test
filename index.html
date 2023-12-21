@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Updated Mask Expression</title>
+    <title>Code Snippet</title>
     <style>
         body {
             background-color: #7A80A4; /* Background color */
@@ -68,22 +68,504 @@
 
     <script>
         function copyCode1() {
-            const code = `// Code snippet 1 ...`;
+            const code = `// Optimized Mask Effector Expression without Layer Transform Inheritance
+const numDivisions = 5; // Adjust this number for more or less precision
+const maskLayer = thisComp.layer("MASK"); // Replace "MASK" with the name of your layer
+const maskName = "Mask 1"; // Change this to the name of your mask
+
+// Retrieve mask properties
+const maskPath = maskLayer.mask(maskName).maskPath;
+const rawMaskPoints = maskPath.points();
+const inTangents = maskPath.inTangents();
+const outTangents = maskPath.outTangents();
+const isMaskClosed = maskPath.isClosed();
+const maskFeather = maskLayer.mask(maskName).maskFeather[0];
+const fallOffSquared = Math.pow(maskFeather, 2);
+
+// Function to determine if a segment should be subdivided based on tangents
+function needsSubdivision(c1, c2) {
+    const tangentThreshold = 0.1; 
+    return (length(c1) > tangentThreshold || length(c2) > tangentThreshold);
+}
+
+// Bezier curve function
+function bezier(t, p1, c1, c2, p2) {
+    var u = 1 - t, tt = t * t, uu = u * u, uuu = uu * u, ttt = tt * t;
+    return [
+        uuu * p1[0] + 3 * uu * t * c1[0] + 3 * u * tt * c2[0] + ttt * p2[0],
+        uuu * p1[1] + 3 * uu * t * c1[1] + 3 * u * tt * c2[1] + ttt * p2[1]
+    ];
+}
+
+// Subdivide Bezier curve segments dynamically based on tangents
+function subdivideBezierSegment(p1, c1, c2, p2, numDivisions) {
+    var newPoints = [];
+    for (var i = 0; i <= numDivisions; i++) {
+        var t = i / numDivisions;
+        newPoints.push(bezier(t, p1, c1, c2, p2));
+    }
+    return newPoints;
+}
+
+// Transform mask points without considering layer transformations
+function transformMaskPoints(pathPoints, inTangents, outTangents, isClosed) {
+    var allPoints = [];
+    var count = isClosed ? pathPoints.length : pathPoints.length - 1;
+
+    for (var i = 0; i < count; i++) {
+        var nextIndex = (i + 1) % pathPoints.length;
+        var c1 = add(pathPoints[i], outTangents[i]);
+        var c2 = add(pathPoints[nextIndex], inTangents[nextIndex]);
+
+        if (needsSubdivision(outTangents[i], inTangents[nextIndex])) {
+            allPoints = allPoints.concat(subdivideBezierSegment(pathPoints[i], c1, c2, pathPoints[nextIndex], numDivisions));
+        } else {
+            allPoints.push(pathPoints[i], pathPoints[nextIndex]);
+        }
+    }
+
+    return allPoints;
+}
+
+const transformedMaskPoints = transformMaskPoints(rawMaskPoints, inTangents, outTangents, isMaskClosed);
+
+// Simplified point-in-polygon check (inside function) with bounding box pre-check
+function inside(point, path) {
+    let [minX, maxX, minY, maxY] = [Infinity, -Infinity, Infinity, -Infinity];
+    for (let i = 0; i < path.length; i++) {
+        minX = Math.min(minX, path[i][0]);
+        maxX = Math.max(maxX, path[i][0]);
+        minY = Math.min(minY, path[i][1]);
+        maxY = Math.max(maxY, path[i][1]);
+    }
+    if (point[0] < minX || point[0] > maxX || point[1] < minY || point[1] > maxY) {
+        return false;
+    }
+
+    let inside = false;
+    for (let i = 0, j = path.length - 1; i < path.length; j = i++) {
+        let xi = path[i][0], yi = path[i][1];
+        let xj = path[j][0], yj = path[j][1];
+        let intersect = ((yi > point[1]) != (yj > point[1])) && (point[0] < (xj - xi) * (point[1] - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+    }
+    return inside;
+}
+
+// Optimized distance to line function
+function distanceToLineSquared(point, a, b) {
+    let lineLengthSquared = Math.pow(a[0] - b[0], 2) + Math.pow(a[1] - b[1], 2);
+    if (lineLengthSquared == 0) return Math.pow(point[0] - a[0], 2) + Math.pow(point[1] - a[1], 2);
+    let t = ((point[0] - a[0]) * (b[0] - a[0]) + (point[1] - a[1]) * (b[1] - a[1])) / lineLengthSquared;
+    t = Math.max(0, Math.min(1, t));
+    return Math.pow(point[0] - (a[0] + t * (b[0] - a[0])), 2) + Math.pow(point[1] - (a[1] + t * (b[1] - a[1])), 2);
+}
+
+// Calculate closest distance to the mask path
+function closestDistanceSquared(point, path) {
+    let closestDistSquared = Infinity;
+    for (let i = 0; i < path.length - 1; i++) {
+        let distSquared = distanceToLineSquared(point, path[i], path[i + 1]);
+        if (distSquared < closestDistSquared) closestDistSquared = distSquared;
+    }
+    return closestDistSquared;
+}
+
+// Main logic with corrected falloff calculation
+const anchorPoint = thisLayer.transform.anchorPoint;
+const toCompAnchor = thisLayer.toComp([anchorPoint[0], anchorPoint[1]]);
+let effectValue = thisProperty.key(1).value;
+let closestDistSquared = closestDistanceSquared(toCompAnchor, transformedMaskPoints);
+
+if (isMaskClosed) {
+    let isInside = inside(toCompAnchor, transformedMaskPoints);
+    if (isInside) {
+        effectValue = thisProperty.key(2).value;
+    } else if (maskFeather > 0 && closestDistSquared <= fallOffSquared) {
+        let normalizedDistance = Math.sqrt(closestDistSquared) / maskFeather;
+        effectValue = linear(normalizedDistance, 0, 1, thisProperty.key(2).value, thisProperty.key(1).value);
+    }
+} else {
+    if (maskFeather > 0 && closestDistSquared <= fallOffSquared) {
+        let normalizedDistance = Math.sqrt(closestDistSquared) / maskFeather;
+        effectValue = linear(normalizedDistance, 0, 1, thisProperty.key(2).value, thisProperty.key(1).value);
+    }
+}
+
+effectValue;`;
             copyToClipboard(code);
         }
 
         function copyCode2() {
-            const code = `// Code snippet 2 ...`;
+            const code = `// Optimized Mask Effector Expression with Bezier Curve Support and Adjustable numDivisions
+const numDivisions = 5; // Adjust this number for more or less precision
+const maskLayer = thisComp.layer("MASK"); // Replace "MASK" with the name of your layer
+const maskName = "Mask 1"; // Change this to the name of your mask
+
+// Retrieve mask properties
+const maskPath = maskLayer.mask(maskName).maskPath;
+const rawMaskPoints = maskPath.points();
+const inTangents = maskPath.inTangents();
+const outTangents = maskPath.outTangents();
+const isMaskClosed = maskPath.isClosed();
+const maskFeather = maskLayer.mask(maskName).maskFeather[0];
+const fallOffSquared = Math.pow(maskFeather, 2);
+
+// Function to determine if a segment should be subdivided based on tangents
+function needsSubdivision(c1, c2) {
+    const tangentThreshold = 0.1; 
+    return (length(c1) > tangentThreshold || length(c2) > tangentThreshold);
+}
+
+// Bezier curve function
+function bezier(t, p1, c1, c2, p2) {
+    var u = 1 - t, tt = t * t, uu = u * u, uuu = uu * u, ttt = tt * t;
+    return [
+        uuu * p1[0] + 3 * uu * t * c1[0] + 3 * u * tt * c2[0] + ttt * p2[0],
+        uuu * p1[1] + 3 * uu * t * c1[1] + 3 * u * tt * c2[1] + ttt * p2[1]
+    ];
+}
+
+// Subdivide Bezier curve segments dynamically based on tangents
+function subdivideBezierSegment(p1, c1, c2, p2, numDivisions) {
+    var newPoints = [];
+    for (var i = 0; i <= numDivisions; i++) {
+        var t = i / numDivisions;
+        newPoints.push(bezier(t, p1, c1, c2, p2));
+    }
+    return newPoints;
+}
+
+// Transform mask points according to layer transformations and handle Bezier curves
+function transformMaskPoints(layer, pathPoints, inTangents, outTangents, isClosed) {
+    var allPoints = [];
+    var count = isClosed ? pathPoints.length : pathPoints.length - 1;
+
+    for (var i = 0; i < count; i++) {
+        var nextIndex = (i + 1) % pathPoints.length;
+        var c1 = pathPoints[i] + outTangents[i];
+        var c2 = pathPoints[nextIndex] + inTangents[nextIndex];
+
+        if (needsSubdivision(outTangents[i], inTangents[nextIndex])) {
+            allPoints = allPoints.concat(subdivideBezierSegment(pathPoints[i], c1, c2, pathPoints[nextIndex], numDivisions));
+        } else {
+            allPoints.push(pathPoints[i], pathPoints[nextIndex]);
+        }
+    }
+
+    return allPoints.map(pt => layer.toComp(pt));
+}
+
+const transformedMaskPoints = transformMaskPoints(maskLayer, rawMaskPoints, inTangents, outTangents, isMaskClosed);
+
+// Simplified point-in-polygon check (inside function) with bounding box pre-check
+function inside(point, path) {
+    // Bounding Box Check
+    let [minX, maxX, minY, maxY] = [Infinity, -Infinity, Infinity, -Infinity];
+    for (let i = 0; i < path.length; i++) {
+        minX = Math.min(minX, path[i][0]);
+        maxX = Math.max(maxX, path[i][0]);
+        minY = Math.min(minY, path[i][1]);
+        maxY = Math.max(maxY, path[i][1]);
+    }
+    if (point[0] < minX || point[0] > maxX || point[1] < minY || point[1] > maxY) {
+        return false;
+    }
+
+    // Existing Ray-Casting Method
+    let inside = false;
+    for (let i = 0, j = path.length - 1; i < path.length; j = i++) {
+        let xi = path[i][0], yi = path[i][1];
+        let xj = path[j][0], yj = path[j][1];
+        let intersect = ((yi > point[1]) != (yj > point[1])) && (point[0] < (xj - xi) * (point[1] - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+    }
+    return inside;
+}
+
+// Optimized distance to line function
+function distanceToLineSquared(point, a, b) {
+    let lineLengthSquared = Math.pow(a[0] - b[0], 2) + Math.pow(a[1] - b[1], 2);
+    if (lineLengthSquared == 0) return Math.pow(point[0] - a[0], 2) + Math.pow(point[1] - a[1], 2);
+    let t = ((point[0] - a[0]) * (b[0] - a[0]) + (point[1] - a[1]) * (b[1] - a[1])) / lineLengthSquared;
+    t = Math.max(0, Math.min(1, t));
+    return Math.pow(point[0] - (a[0] + t * (b[0] - a[0])), 2) + Math.pow(point[1] - (a[1] + t * (b[1] - a[1])), 2);
+}
+
+// Calculate closest distance to the mask path
+function closestDistanceSquared(point, path) {
+    let closestDistSquared = Infinity;
+    for (let i = 0; i < path.length - 1; i++) {
+        let distSquared = distanceToLineSquared(point, path[i], path[i + 1]);
+        if (distSquared < closestDistSquared) closestDistSquared = distSquared;
+    }
+    return closestDistSquared;
+}
+
+// Main logic with corrected falloff calculation
+const anchorPoint = thisLayer.transform.anchorPoint;
+const toCompAnchor = thisLayer.toComp([anchorPoint[0], anchorPoint[1]]);
+let effectValue = thisProperty.key(1).value;
+let closestDistSquared = closestDistanceSquared(toCompAnchor, transformedMaskPoints);
+
+if (isMaskClosed) {
+    let isInside = inside(toCompAnchor, transformedMaskPoints);
+    if (isInside) {
+        effectValue = thisProperty.key(2).value;
+    } else if (maskFeather > 0 && closestDistSquared <= fallOffSquared) {
+        let normalizedDistance = Math.sqrt(closestDistSquared) / maskFeather;
+        effectValue = linear(normalizedDistance, 0, 1, thisProperty.key(2).value, thisProperty.key(1).value);
+    }
+} else {
+    if (maskFeather > 0 && closestDistSquared <= fallOffSquared) {
+        let normalizedDistance = Math.sqrt(closestDistSquared) / maskFeather;
+        effectValue = linear(normalizedDistance, 0, 1, thisProperty.key(2).value, thisProperty.key(1).value);
+    }
+}
+
+effectValue;`;
             copyToClipboard(code);
         }
 
         function copyCode3() {
-            const code = `// Code snippet 3 ...`;
+            const code = `// Optimized Mask Effector Expression with Bezier Curve Support and Adjustable numDivisions
+const numDivisions = 5; // Adjust this number for more or less precision
+const maskLayer = thisComp.layer("MASK"); // Replace "MASK" with the name of your layer
+const maskName = "Mask 1"; // Change this to the name of your mask
+
+// Retrieve mask properties
+const maskPath = maskLayer.mask(maskName).maskPath;
+const rawMaskPoints = maskPath.points();
+const inTangents = maskPath.inTangents();
+const outTangents = maskPath.outTangents();
+const isMaskClosed = maskPath.isClosed();
+let maskFeather = maskLayer.mask(maskName).maskFeather[0];
+const fallOffSquared = Math.pow(maskFeather, 2);
+
+// Treat feather value of 0 as a small non-zero value
+maskFeather = Math.max(maskFeather, 0.01);
+
+// Function to determine if a segment should be subdivided based on tangents
+function needsSubdivision(c1, c2) {
+    const tangentThreshold = 0.1; 
+    return (length(c1) > tangentThreshold || length(c2) > tangentThreshold);
+}
+
+// Bezier curve function
+function bezier(t, p1, c1, c2, p2) {
+    var u = 1 - t, tt = t * t, uu = u * u, uuu = uu * u, ttt = tt * t;
+    return [
+        uuu * p1[0] + 3 * uu * t * c1[0] + 3 * u * tt * c2[0] + ttt * p2[0],
+        uuu * p1[1] + 3 * uu * t * c1[1] + 3 * u * tt * c2[1] + ttt * p2[1]
+    ];
+}
+
+// Subdivide Bezier curve segments dynamically based on tangents
+function subdivideBezierSegment(p1, c1, c2, p2, numDivisions) {
+    var newPoints = [];
+    for (var i = 0; i <= numDivisions; i++) {
+        var t = i / numDivisions;
+        newPoints.push(bezier(t, p1, c1, c2, p2));
+    }
+    return newPoints;
+}
+
+// Transform mask points according to layer transformations and handle Bezier curves
+function transformMaskPoints(layer, pathPoints, inTangents, outTangents, isClosed) {
+    var allPoints = [];
+    var count = isClosed ? pathPoints.length : pathPoints.length - 1;
+
+    for (var i = 0; i < count; i++) {
+        var nextIndex = (i + 1) % pathPoints.length;
+        var c1 = pathPoints[i] + outTangents[i];
+        var c2 = pathPoints[nextIndex] + inTangents[nextIndex];
+
+        if (needsSubdivision(outTangents[i], inTangents[nextIndex])) {
+            allPoints = allPoints.concat(subdivideBezierSegment(pathPoints[i], c1, c2, pathPoints[nextIndex], numDivisions));
+        } else {
+            allPoints.push(layer.toComp(pathPoints[i]), layer.toComp(pathPoints[nextIndex]));
+        }
+    }
+
+    return allPoints;
+}
+
+const transformedMaskPoints = transformMaskPoints(maskLayer, rawMaskPoints, inTangents, outTangents, isMaskClosed);
+
+// Simplified point-in-polygon check (inside function) with bounding box pre-check
+function inside(point, path) {
+    let [minX, maxX, minY, maxY] = [Infinity, -Infinity, Infinity, -Infinity];
+    for (let i = 0; i < path.length; i++) {
+        minX = Math.min(minX, path[i][0]);
+        maxX = Math.max(maxX, path[i][0]);
+        minY = Math.min(minY, path[i][1]);
+        maxY = Math.max(maxY, path[i][1]);
+    }
+    if (point[0] < minX || point[0] > maxX || point[1] < minY || point[1] > maxY) {
+        return false;
+    }
+
+    let inside = false;
+    for (let i = 0, j = path.length - 1; i < path.length; j = i++) {
+        let xi = path[i][0], yi = path[i][1];
+        let xj = path[j][0], yj = path[j][1];
+        let intersect = ((yi > point[1]) != (yj > point[1])) && (point[0] < (xj - xi) * (point[1] - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+    }
+    return inside;
+}
+
+// Optimized distance to line function
+function distanceToLineSquared(point, a, b) {
+    let lineLengthSquared = Math.pow(a[0] - b[0], 2) + Math.pow(a[1] - b[1], 2);
+    if (lineLengthSquared == 0) return Math.pow(point[0] - a[0], 2) + Math.pow(point[1] - a[1], 2);
+    let t = ((point[0] - a[0]) * (b[0] - a[0]) + (point[1] - a[1]) * (b[1] - a[1])) / lineLengthSquared;
+    t = Math.max(0, Math.min(1, t));
+    return Math.pow(point[0] - (a[0] + t * (b[0] - a[0])), 2) + Math.pow(point[1] - (a[1] + t * (b[1] - a[1])), 2);
+}
+
+// Calculate closest distance to the mask path
+function closestDistanceSquared(point, path) {
+    let closestDistSquared = Infinity;
+    for (let i = 0; i < path.length - 1; i++) {
+        let distSquared = distanceToLineSquared(point, path[i], path[i + 1]);
+        if (distSquared < closestDistSquared) closestDistSquared = distSquared;
+    }
+    return closestDistSquared;
+}
+
+// Main logic with inverted falloff calculation
+const anchorPoint = thisLayer.transform.anchorPoint;
+const toCompAnchor = thisLayer.toComp([anchorPoint[0], anchorPoint[1]]);
+let effectValue = thisProperty.key(1).value;
+let closestDistSquared = closestDistanceSquared(toCompAnchor, transformedMaskPoints);
+let isInside = inside(toCompAnchor, transformedMaskPoints);
+
+if (isInside && maskFeather > 0) {
+    let normalizedDistance = (maskFeather - Math.sqrt(closestDistSquared)) / maskFeather;
+    effectValue = linear(normalizedDistance, 0, 1, thisProperty.key(2).value, thisProperty.key(1).value);
+} else {
+    effectValue = thisProperty.key(1).value;
+}
+
+effectValue;`;
             copyToClipboard(code);
         }
 
         function copyCode4() {
-            const code = `// Code snippet 4 ...`;
+            const code = `// Optimized Mask Effector Expression with Bezier Curve Support and Adjustable numDivisions
+const numDivisions = 5; // Adjust this number for more or less precision
+const maskLayer = thisComp.layer("MASK"); // Replace "MASK" with the name of your layer
+const maskName = "Mask 1"; // Change this to the name of your mask
+
+// Retrieve mask properties
+const maskPath = maskLayer.mask(maskName).maskPath;
+const rawMaskPoints = maskPath.points();
+const inTangents = maskPath.inTangents();
+const outTangents = maskPath.outTangents();
+const isMaskClosed = maskPath.isClosed();
+let maskFeather = maskLayer.mask(maskName).maskFeather[0];
+maskFeather = Math.max(maskFeather, 0.01); // Treat feather value of 0 as a small non-zero value
+
+// Function to determine if a segment should be subdivided based on tangents
+function needsSubdivision(c1, c2) {
+    const tangentThreshold = 0.1; 
+    return (length(c1) > tangentThreshold || length(c2) > tangentThreshold);
+}
+
+// Bezier curve function
+function bezier(t, p1, c1, c2, p2) {
+    var u = 1 - t, tt = t * t, uu = u * u, uuu = uu * u, ttt = tt * t;
+    return [
+        uuu * p1[0] + 3 * uu * t * c1[0] + 3 * u * tt * c2[0] + ttt * p2[0],
+        uuu * p1[1] + 3 * uu * t * c1[1] + 3 * u * tt * c2[1] + ttt * p2[1]
+    ];
+}
+
+// Subdivide Bezier curve segments dynamically based on tangents
+function subdivideBezierSegment(p1, c1, c2, p2, numDivisions) {
+    var newPoints = [];
+    for (var i = 0; i <= numDivisions; i++) {
+        var t = i / numDivisions;
+        newPoints.push(bezier(t, p1, c1, c2, p2));
+    }
+    return newPoints;
+}
+
+// Transform mask points according to layer transformations and handle Bezier curves
+function transformMaskPoints(layer, pathPoints, inTangents, outTangents, isClosed) {
+    var allPoints = [];
+    var count = isClosed ? pathPoints.length : pathPoints.length - 1;
+
+    for (var i = 0; i < count; i++) {
+        var nextIndex = (i + 1) % pathPoints.length;
+        var c1 = add(pathPoints[i], outTangents[i]);
+        var c2 = add(pathPoints[nextIndex], inTangents[nextIndex]);
+        allPoints = allPoints.concat(subdivideBezierSegment(pathPoints[i], c1, c2, pathPoints[nextIndex], numDivisions));
+    }
+
+    return allPoints.map(pt => layer.toComp(pt));
+}
+
+const transformedMaskPoints = transformMaskPoints(maskLayer, rawMaskPoints, inTangents, outTangents, isMaskClosed);
+
+// Simplified point-in-polygon check (inside function) with bounding box pre-check
+function inside(point, path) {
+    let [minX, maxX, minY, maxY] = [Infinity, -Infinity, Infinity, -Infinity];
+    for (let i = 0; i < path.length; i++) {
+        minX = Math.min(minX, path[i][0]);
+        maxX = Math.max(maxX, path[i][0]);
+        minY = Math.min(minY, path[i][1]);
+        maxY = Math.max(maxY, path[i][1]);
+    }
+    if (point[0] < minX || point[0] > maxX || point[1] < minY || point[1] > maxY) {
+        return false;
+    }
+
+    let inside = false;
+    for (let i = 0, j = path.length - 1; i < path.length; j = i++) {
+        let xi = path[i][0], yi = path[i][1];
+        let xj = path[j][0], yj = path[j][1];
+        let intersect = ((yi > point[1]) != (yj > point[1])) && (point[0] < (xj - xi) * (point[1] - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+    }
+    return inside;
+}
+
+// Optimized distance to line function
+function distanceToLineSquared(point, a, b) {
+    let lineLengthSquared = Math.pow(a[0] - b[0], 2) + Math.pow(a[1] - b[1], 2);
+    if (lineLengthSquared == 0) return Math.pow(point[0] - a[0], 2) + Math.pow(point[1] - a[1], 2);
+    let t = ((point[0] - a[0]) * (b[0] - a[0]) + (point[1] - a[1]) * (b[1] - a[1])) / lineLengthSquared;
+    t = Math.max(0, Math.min(1, t));
+    return Math.pow(point[0] - (a[0] + t * (b[0] - a[0])), 2) + Math.pow(point[1] - (a[1] + t * (b[1] - a[1])), 2);
+}
+
+// Calculate closest distance to the mask path
+function closestDistanceSquared(point, path) {
+    let closestDistSquared = Infinity;
+    for (let i = 0; i < path.length - 1; i++) {
+        let distSquared = distanceToLineSquared(point, path[i], path[i + 1]);
+        if (distSquared < closestDistSquared) closestDistSquared = distSquared;
+    }
+    return closestDistSquared;
+}
+
+// Main logic with inverted falloff calculation
+const anchorPoint = thisLayer.transform.anchorPoint;
+const toCompAnchor = thisLayer.toComp([anchorPoint[0], anchorPoint[1]]);
+let effectValue = thisProperty.key(1).value;
+let closestDistSquared = closestDistanceSquared(toCompAnchor, transformedMaskPoints);
+let isInside = inside(toCompAnchor, transformedMaskPoints);
+
+if (isInside && maskFeather > 0) {
+    let normalizedDistance = (maskFeather - Math.sqrt(closestDistSquared)) / maskFeather;
+    effectValue = linear(normalizedDistance, 0, 1, thisProperty.key(2).value, thisProperty.key(1).value);
+} else {
+    effectValue = thisProperty.key(1).value;
+}
+
+effectValue;`;
             copyToClipboard(code);
         }
 
@@ -95,7 +577,7 @@
             document.execCommand('copy');
             document.body.removeChild(textarea);
 
-            alert('Code copied to clipboard!');
+            alert('Expression copied to clipboard!');
         }
     </script>
 </body>
